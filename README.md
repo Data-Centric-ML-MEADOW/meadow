@@ -1,0 +1,1 @@
+# ***M***ixture of ***E***xperts for ***A***bundant ***DO***mains on ***W***ILDS iWildCam (MEADOW)
