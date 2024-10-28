@@ -1,6 +1,7 @@
-import pytorch_lightning as L
+import lightning as L
 import torch
 import torch.nn.functional as F
+from torchmetrics.classification import Accuracy
 from torchvision import models
 
 
@@ -26,6 +27,9 @@ class PreTrainedResNet(L.LightningModule):
         self.optimizer = optimizer
         self.lr = lr
 
+        # accuracy metric for train/val loop
+        self.accuracy = Accuracy(task="multiclass", num_classes=self.out_classes)
+
         # download pretrained resnet
         backbone = self.resnet_variant_map[self.resnet_variant](weights="DEFAULT")
         resnet_num_ftrs = backbone.fc.in_features
@@ -38,7 +42,6 @@ class PreTrainedResNet(L.LightningModule):
 
         # final layer to perform classification
         self.fc = torch.nn.Linear(resnet_num_ftrs, self.out_classes)
-        pass
 
     def forward(self, x):
         with torch.no_grad():
@@ -48,10 +51,10 @@ class PreTrainedResNet(L.LightningModule):
 
     def _batch_step(self, batch, batch_kind):
         if batch_kind == "train":
-            self.classifier.train()
+            self.fc.train()
         else:
-            self.classifier.eval()
-        x, y = batch
+            self.fc.eval()
+        x, y, metadata = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
         acc = self.accuracy(y_hat, y)
