@@ -18,7 +18,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 L.seed_everything(42)  # for reproducability
 torch.set_float32_matmul_precision("high")
 
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 MAX_EPOCHS = 80
 
 
@@ -63,12 +63,13 @@ def create_loader(
     )
 
 
-def get_trainer() -> L.Trainer:
+def get_trainer(log_name: str = "lightning_logs") -> L.Trainer:
     """Creates a lightning trainer."""
     # csv and tensorboard loggers for debugging
+    log_save_dir = "logs"
     loggers = [
-        CSVLogger(save_dir="logs"),
-        TensorBoardLogger(save_dir="logs"),
+        CSVLogger(name=log_name, save_dir=log_save_dir),
+        TensorBoardLogger(name=log_name, save_dir=log_save_dir),
     ]
     # don't overfit
     early_stoper = EarlyStopping(monitor="val_loss", mode="min", patience=5)
@@ -80,11 +81,24 @@ def get_trainer() -> L.Trainer:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resnet-variant", type=int, default=152)
+    parser.add_argument("--no-freeze-backbone", action="store_false")
+    parser.add_argument("--lr", type=float, default=1e-4)
+    args = parser.parse_args()
+    # create string identifier for model run
+    time_str = datetime.strftime(datetime.now(), "%Y-%m-%d_%H-%M-%S")
+    resnet_variant = args.resnet_variant
+    model_str = f"resnet{resnet_variant}"
+    run_desc = f"{model_str}_{time_str}"
+
     # get datasets and dataloaders
     labeled_dataset, unlabeled_dataset = get_iwildcam_datasets()
     resnet_transforms = transforms.Compose(
         [
-            transforms.Resize(256),
+            transforms.Resize(232),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -94,14 +108,18 @@ if __name__ == "__main__":
         labeled_dataset, "train", tfms=resnet_transforms
     )
     labeled_val_loader = create_loader(labeled_dataset, "val", tfms=resnet_transforms)
-    trainer = get_trainer()
+
+    # initialize pytorch lightning trainer
+    trainer = get_trainer(log_name=run_desc)
 
     # init model
-    resnet_variant = 101
     model = PreTrainedResNet(
-        resnet_variant=resnet_variant, out_classes=labeled_dataset.n_classes
+        resnet_variant=resnet_variant,
+        out_classes=labeled_dataset.n_classes,
+        lr=args.lr,
+        freeze_backbone=args.no_freeze_backbone,
     )
 
     # fit model and save checkpoint
     trainer.fit(model, labeled_train_loader, labeled_val_loader)
-    trainer.save_checkpoint(f"checkpoints/resnet{resnet_variant}_{datetime.now()}.ckpt")
+    trainer.save_checkpoint(f"checkpoints/{run_desc}.ckpt")
