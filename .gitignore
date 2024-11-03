@@ -5,3 +5,4 @@ data
 checkpoints/
 logs/
 __pycache__/
+sbatch_logs/

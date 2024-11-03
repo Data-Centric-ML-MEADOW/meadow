@@ -22,6 +22,11 @@ class PreTrainedResNet(L.LightningModule):
         lr=1e-4,
         freeze_backbone=True,
     ):
+        if isinstance(resnet_variant, str):
+            if resnet_variant.isnumeric():
+                resnet_variant = int(resnet_variant)
+            else:
+                raise ValueError("Invalid ResNet variant argument!")
         if resnet_variant not in self.resnet_variant_map:
             raise ValueError("Invalid ResNet variant argument!")
         super().__init__()
@@ -71,7 +76,7 @@ class PreTrainedResNet(L.LightningModule):
         acc = self.accuracy(y_hat, y)
         # logging onto tensorboard
         self.log(f"{batch_kind}_loss", loss, prog_bar=True)
-        self.log(f"{batch_kind}_acc_f1", acc, prog_bar=True)
+        self.log(f"{batch_kind}_acc_f1", acc, prog_bar=True, on_epoch=True)
         return loss
 
     def training_step(self, batch, batch_idx):

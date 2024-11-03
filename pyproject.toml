@@ -1,2 +1,4 @@
 [tool.pyright]
 typeCheckingMode = "basic"
+venv = "dml_env"
+venvPath = "/storage/ice1/5/4/rso31/miniforge3/envs"
