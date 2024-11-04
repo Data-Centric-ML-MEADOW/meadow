@@ -9,6 +9,9 @@ from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 from utils.mappings import MODEL_MAP, TFMS_MAP
 from utils.data import get_iwildcam_datasets, create_loader
 
+L.seed_everything(42)  # for reproducability
+torch.set_float32_matmul_precision("high")
+
 MAX_EPOCHS = 50
 
 def get_trainer(
@@ -49,9 +52,6 @@ def collect_train_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 if __name__ == "__main__":
-    L.seed_everything(42)  # for reproducability
-    torch.set_float32_matmul_precision("high")
-
     args = collect_train_arguments()
 
     # create string identifier for model run
