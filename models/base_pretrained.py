@@ -1,7 +1,7 @@
 import lightning as L
 import torch
 import torch.nn.functional as F
-from torchmetrics.classification import Accuracy
+from torchmetrics.classification import Accuracy, F1Score
 from torchvision import models
 
 
@@ -41,6 +41,7 @@ class PreTrainedResNet(L.LightningModule):
 
         # accuracy metric for train/val loop
         self.accuracy = Accuracy(task="multiclass", num_classes=self.out_classes)
+        self.f1_score = F1Score(task="multiclass", num_classes=self.out_classes, average='macro')
 
         # download pretrained resnet
         backbone = self.resnet_variant_map[self.resnet_variant](weights="DEFAULT")
@@ -74,9 +75,11 @@ class PreTrainedResNet(L.LightningModule):
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
         acc = self.accuracy(y_hat, y)
+        f1 = self.f1_score(y_hat, y)
         # logging onto tensorboard
         self.log(f"{batch_kind}_loss", loss, prog_bar=True)
-        self.log(f"{batch_kind}_acc_f1", acc, prog_bar=True, on_epoch=True)
+        self.log(f"{batch_kind}_acc", acc, prog_bar=True, on_epoch=True)
+        self.log(f"{batch_kind}_f1", f1, prog_bar=True, on_epoch=True)
         return loss
 
     def training_step(self, batch, batch_idx):
