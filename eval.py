@@ -1,12 +1,14 @@
 import argparse
+import os
 from tqdm import tqdm
 import torch
 import re
 import lightning as L
 from utils.mappings import MODEL_MAP, TFMS_MAP
 from utils.data import get_iwildcam_datasets, create_loader
+import pandas as pd
 
-L.seed_everything(42)  # for reproducability
+L.seed_everything(42, workers=True)  # for reproducability
 torch.set_float32_matmul_precision("high")
 
 EVAL_SPLIT_TYPES = [
@@ -53,10 +55,12 @@ def main():
     # Set default transformations if none specified
     model_tfms = TFMS_MAP.get(model_name, TFMS_MAP["default"])
 
-    dummy_trainer = L.Trainer()
+    # init trainer class just to use predict method
+    dummy_trainer = L.Trainer(devices=1, logger=[], deterministic=True)  # suppress logging
 
     # Load the labeled dataset and create evaluation DataLoaders
     labeled_dataset, _ = get_iwildcam_datasets()
+    agg_res = {}
     for split in EVAL_SPLIT_TYPES:
         loader = create_loader(
             labeled_dataset,
@@ -78,14 +82,15 @@ def main():
         all_y_pred = dummy_trainer.predict(model=model, dataloaders=loader)
         assert all_y_pred is not None
         # find predictions for each data example
-        all_y_pred = torch.vstack(all_y_pred).argmax(dim=-1).flatten()
+        all_y_pred = torch.vstack(all_y_pred).argmax(dim=-1).flatten() # type: ignore
 
         # stack all true labels and metadata for the loader
         all_y_true = []
         all_metadata = []
-        for _, y_true, metadata in tqdm(loader):
+        subset_no_tfms = labeled_dataset.get_subset(split)  # ok to skip transforms, X is not used
+        for _, y_true, m in tqdm(subset_no_tfms, desc="Collecting true labels and metadata"): # type: ignore
             all_y_true.append(y_true)
-            all_metadata.append(metadata)
+            all_metadata.append(m)
         all_y_true = torch.hstack(all_y_true)
         all_metadata = torch.vstack(all_metadata)
 
@@ -93,6 +98,17 @@ def main():
         print(f"==={split}===")
         res, _ = labeled_dataset.eval(all_y_pred, all_y_true, all_metadata)
         print(res)
+        agg_res[split] = res
+
+    print("====SUMMARY====")
+    df = pd.DataFrame.from_dict(agg_res)
+    print(df)
+    stripped_fn = args.checkpoint_path.rsplit(".", 1)[0]
+    stripped_fn = stripped_fn.split("/")[-1]
+    if not os.path.exists("results"):
+        os.mkdir("results")
+    df.to_csv(f"results/{stripped_fn}.csv") # save to file
+
 
 if __name__ == "__main__":
     main()
