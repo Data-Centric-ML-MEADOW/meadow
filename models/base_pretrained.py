@@ -18,7 +18,7 @@ class PreTrainedResNet(L.LightningModule):
         self,
         out_classes,
         resnet_variant=18,
-        optimizer=torch.optim.AdamW,
+        optimizer=torch.optim.AdamW,  # type: ignore
         lr=1e-4,
         freeze_backbone=True,
     ):
@@ -41,7 +41,7 @@ class PreTrainedResNet(L.LightningModule):
 
         # accuracy metric for train/val loop
         self.accuracy = Accuracy(task="multiclass", num_classes=self.out_classes)
-        self.f1_score = MulticlassF1Score(num_classes=self.out_classes, average='macro')
+        self.f1_score = MulticlassF1Score(num_classes=self.out_classes, average="macro")
 
         # download pretrained resnet
         backbone = self.resnet_variant_map[self.resnet_variant](weights="DEFAULT")
@@ -77,9 +77,9 @@ class PreTrainedResNet(L.LightningModule):
         acc = self.accuracy(y_hat, y)
         f1 = self.f1_score(y_hat, y)
         # logging onto tensorboard
-        self.log(f"{batch_kind}_loss", loss, prog_bar=True)
-        self.log(f"{batch_kind}_acc", acc, prog_bar=True, on_epoch=True)
-        self.log(f"{batch_kind}_f1", f1, prog_bar=True, on_epoch=True)
+        self.log(f"{batch_kind}_loss", loss, prog_bar=True, sync_dist=True)
+        self.log(f"{batch_kind}_acc", acc, prog_bar=True, on_epoch=True, sync_dist=True)
+        self.log(f"{batch_kind}_f1", f1, prog_bar=True, on_epoch=True, sync_dist=True)
         return loss
 
     def training_step(self, batch, batch_idx):

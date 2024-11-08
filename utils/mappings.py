@@ -25,7 +25,6 @@ TFMS_MAP: dict[str, transforms.Compose] = {
             # random augmentations for training more robustly
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation((-30, 30)),
-            transforms.RandomErasing(p=0.1),
             transforms.ColorJitter(
                 brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1
             ),
