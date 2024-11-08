@@ -52,8 +52,10 @@ def main():
         raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
     model_class = MODEL_MAP[model_name]
 
-    # Set default transformations if none specified
-    model_tfms = TFMS_MAP.get(model_name, TFMS_MAP["default"])
+    # Utilize non-augmented transforms if model name ends with -tfms
+    using_tfms = model_name.endswith("-tfms")
+    model_name_base = model_name if not using_tfms else model_name.replace("-tfms", "")
+    model_tfms = TFMS_MAP.get(model_name_base, TFMS_MAP["default"])
 
     # init trainer class just to use predict method
     dummy_trainer = L.Trainer(devices=1, logger=[], deterministic=True)  # suppress logging
