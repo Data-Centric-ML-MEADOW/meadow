@@ -1,10 +1,13 @@
 import typing
 
 from torchvision import transforms
+from torchvision.transforms import v2
 from wilds import get_dataset
 from wilds.common.data_loaders import get_eval_loader, get_train_loader
 from wilds.datasets.iwildcam_dataset import IWildCamDataset
 from wilds.datasets.unlabeled.iwildcam_unlabeled_dataset import IWildCamUnlabeledDataset
+from wilds.datasets.wilds_dataset import WILDSSubset
+
 
 def get_iwildcam_datasets() -> tuple[IWildCamDataset, IWildCamUnlabeledDataset]:
     """Retrieves the iWildCam labeled and unlabeled datasets."""
@@ -22,18 +25,31 @@ def get_iwildcam_datasets() -> tuple[IWildCamDataset, IWildCamUnlabeledDataset]:
     return dataset, dataset_unlabeled
 
 
+class WILDSSubsetNoMetadata(WILDSSubset):
+    def __getitem__(self, idx):
+        # metadata is the last element in tuple, remove it
+        return super().__getitem__(idx)[:-1]
+
+
 def create_loader(
     dataset: IWildCamDataset | IWildCamUnlabeledDataset,
     subset_type: str,
-    tfms: transforms.Compose,
+    tfms: transforms.Compose | v2.Compose,
     batch_size: int,
     num_workers=4,
+    metadata=True,
 ):
     """Creates a train dataloader."""
     if subset_type not in dataset.split_dict:
         raise ValueError(f"subset_type must be one of {dataset.split_dict.keys()}")
 
     data = dataset.get_subset(split=subset_type, transform=tfms)
+
+    if not metadata and isinstance(data, WILDSSubset):
+        print("monkeypatching data subset __getitem__...")
+        # substitute WILDSSubset.__getitem__ with one that doesn't return metadata
+        data.__class__ = WILDSSubsetNoMetadata
+
     loader = get_train_loader if subset_type == "train" else get_eval_loader
 
     return loader(

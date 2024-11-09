@@ -17,23 +17,23 @@ class PreTrainedResNet(L.LightningModule):
     def __init__(
         self,
         out_classes,
-        resnet_variant=18,
+        variant=18,
         optimizer=torch.optim.AdamW,  # type: ignore
         lr=1e-4,
         freeze_backbone=True,
     ):
-        if isinstance(resnet_variant, str):
-            if resnet_variant.isnumeric():
-                resnet_variant = int(resnet_variant)
+        if isinstance(variant, str):
+            if variant.isnumeric():
+                variant = int(variant)
             else:
                 raise ValueError("Invalid ResNet variant argument!")
-        if resnet_variant not in self.resnet_variant_map:
+        if variant not in self.resnet_variant_map:
             raise ValueError("Invalid ResNet variant argument!")
         super().__init__()
         self.save_hyperparameters()
 
         self.out_classes = out_classes
-        self.resnet_variant = resnet_variant
+        self.resnet_variant = variant
 
         self.optimizer = optimizer
         self.lr = lr
