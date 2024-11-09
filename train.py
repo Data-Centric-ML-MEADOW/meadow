@@ -118,18 +118,14 @@ def train_ensemble(
     if args.num_estimators is None:
         raise ValueError("Number of estimators must be specified")
 
-    # fill parameters from base class w/ args and out_classes
-    class estimator_class(base_model_class):
-        def __init__(self):
-            super().__init__(
-                out_classes,
-                variant=args.model_variant,
-                freeze_backbone=args.no_freeze_backbone,
-            )
-
     # create ensemble model
     ensemble_model = ensemble_class(
-        estimator=estimator_class,
+        estimator=base_model_class,
+        estimator_args={
+            "out_classes": out_classes,
+            "variant": args.model_variant,
+            "freeze_backbone": args.no_freeze_backbone,
+        },
         n_estimators=args.num_estimators,
         cuda=True,
     )
@@ -148,9 +144,12 @@ def train_ensemble(
 
     set_logger(f"{run_desc}", use_tb_logger=True)
 
+    # if ensemble type is snapshot, then we need to train 10 epochs per estimator
+    num_epochs = 10 * (args.num_estimators if args.ensemble_type == "snapshot" else 1)
+
     ensemble_model.fit(
         labeled_train_loader,
-        epochs=10 * args.num_estimators,  # 10 epochs per estimator (snapshot)
+        epochs=num_epochs,
         test_loader=labeled_val_loader,
         save_model=True,
         save_dir=f"checkpoints/{run_desc}",
