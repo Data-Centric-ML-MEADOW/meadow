@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH -J rnet18-bagged
-#SBATCH -N1 --gres=gpu:H100:1 --ntasks-per-node=1 --cpus-per-task=8
+#SBATCH -J rnet18-snapshot
+#SBATCH -N1 --gres=gpu:A100:1 --ntasks-per-node=1 --cpus-per-task=8
 #SBATCH --mem-per-gpu=64G
-#SBATCH -t 06:00:00
+#SBATCH -t 08:00:00
 #SBATCH -o sbatch_logs/Report-%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=rso31@gatech.edu
@@ -17,5 +17,5 @@ srun python train.py \
     --lr 1e-3 \
     --batch-size 128 \
     --early-stopping-patience 7 \
-    --ensemble-type bagging \
+    --ensemble-type snapshot \
     --num-estimators 7

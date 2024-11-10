@@ -106,7 +106,6 @@ def train_ensemble(
     base_model_class,
     out_classes: int,
     labeled_train_loader: DataLoader,
-    labeled_val_loader: DataLoader,
     args: argparse.Namespace,
 ):
     # select ensemble type from mapping based on argument
@@ -150,7 +149,8 @@ def train_ensemble(
     ensemble_model.fit(
         labeled_train_loader,
         epochs=num_epochs,
-        test_loader=labeled_val_loader,
+        # test_loader=labeled_val_loader,
+        # do not use a test_loader, it removes the guarantee of saving later estimators
         save_model=True,
         save_dir=f"checkpoints/{run_desc}",
     )
@@ -227,6 +227,5 @@ if __name__ == "__main__":
             model_class,
             out_classes,
             labeled_train_loader,
-            labeled_val_loader,
             args,
         )
