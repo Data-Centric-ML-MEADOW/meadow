@@ -45,7 +45,7 @@ TFMS_MAP: dict[str, transforms.Compose | v2.Compose] = {
             v2.Resize(232),
             v2.CenterCrop(224),
             v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+            v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     ),
     "vit-tfms": transforms.Compose(
@@ -59,7 +59,7 @@ TFMS_MAP: dict[str, transforms.Compose | v2.Compose] = {
             ),
             transforms.Resize(232),
             transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     ),
     "default": v2.Compose(
