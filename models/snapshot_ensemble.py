@@ -35,7 +35,10 @@ class SnapshotEnsemble(L.LightningModule):
         self.f1_score = MulticlassF1Score(num_classes=self.out_classes, average="macro")
 
         # create empty ensemble module list, will be populated in training
-        self.ensemble = torch.nn.ModuleList([self.base_model(**self.base_model_args)])
+        self.ensemble = torch.nn.ModuleList()
+        for _ in range(self.num_estimators):
+            self.ensemble.append(self.base_model(**self.base_model_args))
+        self.curr_estimator = 0
 
         # disable automatic optimization to allow for lr scheduling
         self.automatic_optimization = False
@@ -58,6 +61,7 @@ class SnapshotEnsemble(L.LightningModule):
 
     def on_fit_start(self) -> None:
         super().on_fit_start()
+        self.curr_estimator = 0
         assert self.trainer.max_epochs is not None
         if self.trainer.max_epochs % self.num_estimators != 0:
             raise ValueError(
@@ -73,12 +77,12 @@ class SnapshotEnsemble(L.LightningModule):
         estimator_idx = self.current_epoch // (
             self.trainer.max_epochs // self.num_estimators
         )
-        # create new estimator if index does not exist
-        if estimator_idx == len(self.ensemble):
-            # create new estimator as a snapshot of the last estimator
-            snapshot = self.base_model(**self.base_model_args)
-            snapshot.load_state_dict(self.ensemble[-1].state_dict())
-            self.ensemble.append(snapshot)
+        if estimator_idx != self.curr_estimator:
+            # set next estimator as a snapshot of the last estimator
+            self.ensemble[estimator_idx].load_state_dict(
+                self.ensemble[self.curr_estimator].state_dict()
+            )
+            self.curr_estimator = estimator_idx
         estimator = self.ensemble[estimator_idx]
         y_hat = estimator(x)
 
