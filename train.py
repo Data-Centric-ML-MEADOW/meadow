@@ -3,12 +3,13 @@ from datetime import datetime
 
 import lightning as L
 import torch
-from lightning.pytorch.callbacks import EarlyStopping
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
 from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 from lightning.pytorch.tuner.tuning import Tuner
 from torch.utils.data import DataLoader
 from torchensemble.utils.logging import set_logger
 
+from models.snapshot_ensemble import SnapshotEnsemble
 from utils.data import create_loader, get_iwildcam_datasets
 from utils.mappings import ENSEMBLE_MAP, MODEL_MAP, TFMS_MAP
 
@@ -21,9 +22,11 @@ TIME_NOW_STR = datetime.strftime(datetime.now(), "%Y%m%d-%H%M%S")
 
 
 def get_trainer(
+    num_epochs: int = MAX_EPOCHS,
     log_name: str = "lightning_logs",
     log_save_dir: str = "logs",
     early_stopping_patience: int | None = 5,
+    lr_monitor: bool = False,
 ) -> L.Trainer:
     """Creates a lightning trainer."""
     # csv and tensorboard loggers for debugging
@@ -34,6 +37,8 @@ def get_trainer(
 
     # configure early stopping if patience is specified
     callbacks = []
+    if lr_monitor:
+        callbacks.append(LearningRateMonitor("step"))
     if early_stopping_patience:
         callbacks.append(
             EarlyStopping(
@@ -41,7 +46,7 @@ def get_trainer(
             )
         )
     return L.Trainer(
-        logger=loggers, max_epochs=MAX_EPOCHS, callbacks=callbacks, deterministic=True
+        logger=loggers, max_epochs=num_epochs, callbacks=callbacks, deterministic=True
     )
 
 
@@ -57,6 +62,7 @@ def find_lr(model: L.LightningModule, train_loader: DataLoader) -> float | None:
 
 
 def train_model(
+    model_class,
     out_classes: int,
     labeled_train_loader: DataLoader,
     labeled_val_loader: DataLoader,
@@ -92,9 +98,57 @@ def train_model(
         early_stopping_patience=args.early_stopping_patience,
         log_save_dir=args.log_save_dir,
         log_name=run_desc,
+        num_epochs=args.epochs,
     )
     trainer.fit(
         model,
+        train_dataloaders=labeled_train_loader,
+        val_dataloaders=labeled_val_loader,
+    )
+    ckpt_save_path = f"checkpoints/{run_desc}.ckpt"
+    trainer.save_checkpoint(ckpt_save_path)
+
+
+def train_ensemble_pl(
+    base_model_class,
+    out_classes: int,
+    labeled_train_loader: DataLoader,
+    labeled_val_loader: DataLoader,
+    args: argparse.Namespace,
+):
+    """Trains an ensemble of models with the given dataloaders."""
+    model_args = {
+        "variant": args.model_variant,
+        "out_classes": out_classes,
+        "lr": args.lr,
+        "freeze_backbone": args.no_freeze_backbone,
+    }
+
+    # create string identifier for model run
+    model_str = f"{args.model_name}-{args.model_variant}"
+    run_desc = (
+        f"{model_str}_{TIME_NOW_STR}_lr{args.lr:.2e}_bs{args.batch_size}"
+        f"_{args.ensemble_type}{args.num_estimators}"
+    )
+    print(f"Training model w/ description: {run_desc}")
+
+    ensemble_model = SnapshotEnsemble(
+        out_classes=out_classes,
+        train_loader_len=len(labeled_train_loader),
+        base_model=base_model_class,
+        base_model_args=model_args,
+        num_estimators=args.num_estimators,
+    )
+
+    # fit model and save checkpoint
+    trainer = get_trainer(
+        log_save_dir=args.log_save_dir,
+        log_name=run_desc,
+        num_epochs=args.epochs * args.num_estimators,  # num epochs per estimator
+        lr_monitor=True,
+    )
+    trainer.fit(
+        ensemble_model,
         train_dataloaders=labeled_train_loader,
         val_dataloaders=labeled_val_loader,
     )
@@ -144,7 +198,9 @@ def train_ensemble(
     set_logger(f"{run_desc}", use_tb_logger=True)
 
     # if ensemble type is snapshot, then we need to train 10 epochs per estimator
-    num_epochs = 10 * (args.num_estimators if args.ensemble_type == "snapshot" else 1)
+    num_epochs = args.epochs * (
+        args.num_estimators if args.ensemble_type == "snapshot" else 1
+    )
 
     ensemble_model.fit(
         labeled_train_loader,
@@ -161,6 +217,7 @@ def collect_train_arguments() -> argparse.Namespace:
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--model-variant", required=True)
     parser.add_argument("--no-freeze-backbone", action="store_false")
+    parser.add_argument("--epochs", type=int, default=MAX_EPOCHS)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--find-lr", action="store_true")
     parser.add_argument("--early-stopping-patience", type=int, default=10)
@@ -193,6 +250,8 @@ if __name__ == "__main__":
     except KeyError as e:
         raise ValueError(f"Transformations for model '{model_name}' not found: {e}")
 
+    using_torchensemble = args.ensemble_type and args.ensemble_type != "snapshot-pl"
+
     # get datasets and dataloaders with transformations
     labeled_dataset, unlabeled_dataset = get_iwildcam_datasets()
     labeled_train_loader = create_loader(
@@ -200,14 +259,15 @@ if __name__ == "__main__":
         "train",
         tfms=model_tfms,
         batch_size=args.batch_size,
-        metadata=not args.ensemble_type,  # metadata is not needed for ensembles
+        # metadata is not needed for torchensemble ensembles
+        metadata=not using_torchensemble,
     )
     labeled_val_loader = create_loader(
         labeled_dataset,
         "val",
         tfms=val_tfms,
         batch_size=args.batch_size,
-        metadata=not args.ensemble_type,
+        metadata=not using_torchensemble,
     )
     assert labeled_train_loader is not None
     assert labeled_val_loader is not None
@@ -217,6 +277,15 @@ if __name__ == "__main__":
 
     if not args.ensemble_type:
         train_model(
+            model_class,
+            out_classes,
+            labeled_train_loader,
+            labeled_val_loader,
+            args,
+        )
+    elif args.ensemble_type == "snapshot-pl":
+        train_ensemble_pl(
+            model_class,
             out_classes,
             labeled_train_loader,
             labeled_val_loader,
