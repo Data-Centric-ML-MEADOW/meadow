@@ -44,6 +44,8 @@ def main():
     # Parse checkpoint file name to get model details
     checkpoint_info = parse_checkpoint_filename(args.checkpoint_path)
     model_name = checkpoint_info["model_name"]
+    if model_name.endswith("-tfms"):
+        model_name = model_name.replace("-tfms", "")
     model_variant = checkpoint_info["model_variant"]
     batch_size = checkpoint_info["batch_size"]
 
@@ -62,6 +64,15 @@ def main():
 
     # Load the labeled dataset and create evaluation DataLoaders
     labeled_dataset, _ = get_iwildcam_datasets()
+
+    # Initialize the model from the checkpoint
+    model = model_class.load_from_checkpoint(
+        args.checkpoint_path,
+        variant=model_variant,
+        out_classes=labeled_dataset.n_classes,
+    )
+    model.eval()
+
     agg_res = {}
     for split in EVAL_SPLIT_TYPES:
         loader = create_loader(
@@ -71,14 +82,6 @@ def main():
             batch_size=batch_size
         )
         assert loader is not None
-
-        # Initialize the model from the checkpoint
-        model = model_class.load_from_checkpoint(
-            args.checkpoint_path,
-            resnet_variant=model_variant,
-            out_classes=labeled_dataset.n_classes,
-        )
-        model.eval()
 
         # infer on the loader
         all_y_pred = dummy_trainer.predict(model=model, dataloaders=loader)
