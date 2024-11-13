@@ -141,7 +141,9 @@ class SnapshotEnsemble(L.LightningModule):
         optimizer = self.optimizer(self.parameters(), lr=self.lr)
         assert self.trainer.max_epochs is not None
 
-        num_iters = self.train_loader_len * self.trainer.max_epochs
+        num_iters = (
+            self.train_loader_len * self.trainer.max_epochs
+        ) // torch.cuda.device_count()
         T_M = math.ceil(num_iters / self.num_estimators)
 
         # cosine annealing that steps at every batch iteration
