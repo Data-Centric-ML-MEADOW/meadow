@@ -79,6 +79,7 @@ class SnapshotEnsemble(L.LightningModule):
         )
         if estimator_idx != self.curr_estimator:
             # set next estimator as a snapshot of the last estimator
+            print(f"Switching to train estimator #{estimator_idx}...")
             self.ensemble[estimator_idx].load_state_dict(
                 self.ensemble[self.curr_estimator].state_dict()
             )
@@ -97,9 +98,19 @@ class SnapshotEnsemble(L.LightningModule):
         acc = self.accuracy(y_hat, y)
         f1 = self.f1_score(y_hat, y)
         # logging onto tensorboard
+        self.log("estimator_idx", estimator_idx, prog_bar=True, sync_dist=True)
         self.log("train_loss", loss, prog_bar=True, sync_dist=True)
-        self.log("train_acc", acc, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log("train_f1", f1, prog_bar=True, on_epoch=True, sync_dist=True)
+        self.log(
+            "train_acc",
+            acc,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+        )
+        self.log(
+            "train_f1", f1, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True
+        )
         return loss
 
     def _eval_step(self, batch, batch_kind):

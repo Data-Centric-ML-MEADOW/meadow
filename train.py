@@ -27,6 +27,7 @@ def get_trainer(
     log_save_dir: str = "logs",
     early_stopping_patience: int | None = 5,
     lr_monitor: bool = False,
+    **kwargs,
 ) -> L.Trainer:
     """Creates a lightning trainer."""
     # csv and tensorboard loggers for debugging
@@ -46,7 +47,11 @@ def get_trainer(
             )
         )
     return L.Trainer(
-        logger=loggers, max_epochs=num_epochs, callbacks=callbacks, deterministic=True
+        logger=loggers,
+        max_epochs=num_epochs,
+        callbacks=callbacks,
+        deterministic=True,
+        **kwargs,
     )
 
 
@@ -91,6 +96,8 @@ def train_model(
     # create string identifier for model run
     model_str = f"{args.model_name}-{args.model_variant}"
     run_desc = f"{model_str}_{TIME_NOW_STR}_lr{args.lr:.2e}_bs{args.batch_size}"
+    if args.misc_desc:
+        run_desc += f"[{args.misc_desc}]"
     print(f"Training model w/ description: {run_desc}")
 
     # fit model and save checkpoint
@@ -130,6 +137,8 @@ def train_ensemble_pl(
         f"{model_str}_{TIME_NOW_STR}_lr{args.lr:.2e}_bs{args.batch_size}"
         f"_{args.ensemble_type}{args.num_estimators}"
     )
+    if args.misc_desc:
+        run_desc += f"[{args.misc_desc}]"
     print(f"Training model w/ description: {run_desc}")
 
     ensemble_model = SnapshotEnsemble(
@@ -146,6 +155,12 @@ def train_ensemble_pl(
         log_name=run_desc,
         num_epochs=args.epochs * args.num_estimators,  # num epochs per estimator
         lr_monitor=True,
+        early_stopping_patience=None,  # train all estimators
+        strategy=(
+            "ddp_find_unused_parameters_true"
+            if torch.cuda.device_count() > 1
+            else "auto"
+        ),
     )
     trainer.fit(
         ensemble_model,
@@ -156,7 +171,7 @@ def train_ensemble_pl(
     trainer.save_checkpoint(ckpt_save_path)
 
 
-def train_ensemble(
+def train_torchensemble(
     base_model_class,
     out_classes: int,
     labeled_train_loader: DataLoader,
@@ -193,9 +208,11 @@ def train_ensemble(
         f"{model_str}_{TIME_NOW_STR}_lr{args.lr:.2e}_bs{args.batch_size}"
         f"_{args.ensemble_type}{args.num_estimators}"
     )
+    if args.misc_desc:
+        run_desc += f"[{args.misc_desc}]"
     print(f"Training ensemble model w/ description: {run_desc}")
 
-    set_logger(f"{run_desc}", use_tb_logger=True)
+    set_logger(f"{run_desc}")
 
     # if ensemble type is snapshot, then we need to train 10 epochs per estimator
     num_epochs = args.epochs * (
@@ -225,6 +242,7 @@ def collect_train_arguments() -> argparse.Namespace:
     parser.add_argument("--log-save-dir", type=str, default="logs")
     parser.add_argument("--ensemble-type", type=str)
     parser.add_argument("--num-estimators", type=int)
+    parser.add_argument("--misc-desc", type=str)
     return parser.parse_args()
 
 
@@ -292,7 +310,7 @@ if __name__ == "__main__":
             args,
         )
     else:
-        train_ensemble(
+        train_torchensemble(
             model_class,
             out_classes,
             labeled_train_loader,

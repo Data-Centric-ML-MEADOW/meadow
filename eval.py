@@ -7,6 +7,7 @@ import lightning as L
 from utils.mappings import MODEL_MAP, TFMS_MAP
 from utils.data import get_iwildcam_datasets, create_loader
 import pandas as pd
+from models.snapshot_ensemble import SnapshotEnsemble
 
 L.seed_everything(42, workers=True)  # for reproducability
 torch.set_float32_matmul_precision("high")
@@ -20,7 +21,7 @@ EVAL_SPLIT_TYPES = [
 
 def parse_checkpoint_filename(checkpoint_path: str):
     """Parse the checkpoint filename to extract model name, variant, and batch size."""
-    pattern = r"(?P<model_name>.+)-(?P<model_variant>.+)_(?P<date>\d{8}-\d{6})_lr(?P<lr>[0-9.]+)_bs(?P<batch_size>\d+)\.ckpt"
+    pattern = r"(?P<model_name>.+)-(?P<model_variant>.+)_(?P<date>\d{8}-\d{6})_lr(?P<lr>[e0-9.-]+)_bs(?P<batch_size>\d+)(?:_(?P<ensemble>[a-z-]+)(?P<n_estimators>\d+))?(?:\[.+\])?\.ckpt"
     match = re.match(pattern, checkpoint_path.split('/')[-1])
 
     if not match:
@@ -31,6 +32,8 @@ def parse_checkpoint_filename(checkpoint_path: str):
         "model_variant": match.group("model_variant"),
         "lr": float(match.group("lr")),
         "batch_size": int(match.group("batch_size")),
+        "ensemble": match.group("ensemble"),
+        "n_estimators": int(match.group("n_estimators") or -1)
     }
 
 def collect_eval_arguments() -> argparse.Namespace:
@@ -66,11 +69,27 @@ def main():
     labeled_dataset, _ = get_iwildcam_datasets()
 
     # Initialize the model from the checkpoint
-    model = model_class.load_from_checkpoint(
-        args.checkpoint_path,
-        variant=model_variant,
-        out_classes=labeled_dataset.n_classes,
-    )
+    if checkpoint_info["ensemble"]:
+        if checkpoint_info["ensemble"] == "snapshot-pl":
+            model = SnapshotEnsemble.load_from_checkpoint(
+                args.checkpoint_path,
+                out_classes=labeled_dataset.n_classes,
+                train_loader_len=-1,
+                num_estimators=checkpoint_info["n_estimators"],
+                base_model=model_class,
+                base_model_args={
+                    "variant": model_variant,
+                    "out_classes":labeled_dataset.n_classes
+                }
+            )
+        else:
+            raise ValueError() # TODO: add support for torchenesemble
+    else:
+        model = model_class.load_from_checkpoint(
+            args.checkpoint_path,
+            variant=model_variant,
+            out_classes=labeled_dataset.n_classes,
+        )
     model.eval()
 
     agg_res = {}

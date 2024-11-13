@@ -57,6 +57,12 @@ class PreTrainedResNet(L.LightningModule):
         # final layer to perform classification
         self.fc = torch.nn.Linear(resnet_num_ftrs, self.out_classes)
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # keep feat extractor frozen during training if freeze_backbone is True
+        if self.freeze_backbone:
+            self.resnet_feat_extractor.eval()
+
     def forward(self, x):
         if self.freeze_backbone:
             with torch.no_grad():
@@ -68,9 +74,9 @@ class PreTrainedResNet(L.LightningModule):
 
     def _batch_step(self, batch, batch_kind):
         if batch_kind == "train":
-            self.fc.train()
+            self.train()
         else:
-            self.fc.eval()
+            self.eval()
         x, y, metadata = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
