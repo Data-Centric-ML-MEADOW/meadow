@@ -233,15 +233,21 @@ def collect_train_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--model-variant", required=True)
+    # whether to freeze the feature extraction backbone of model
     parser.add_argument("--no-freeze-backbone", action="store_false")
+    # applies per-estimator/expert if `ensemble-type` is specified
     parser.add_argument("--epochs", type=int, default=MAX_EPOCHS)
     parser.add_argument("--lr", type=float, default=1e-4)
+    # uses lightning's lr finder, does NOT work with ensembles
     parser.add_argument("--find-lr", action="store_true")
+    # does NOT work with ensemble training
     parser.add_argument("--early-stopping-patience", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--log-save-dir", type=str, default="logs")
     parser.add_argument("--ensemble-type", type=str)
+    # must be specified if `ensemble-type` is defined
     parser.add_argument("--num-estimators", type=int)
+    # descriptive string to append to log/checkpoint files (e.g. experiment setup, num gpus, etc.)
     parser.add_argument("--misc-desc", type=str)
     return parser.parse_args()
 
@@ -249,10 +255,8 @@ def collect_train_arguments() -> argparse.Namespace:
 if __name__ == "__main__":
     args = collect_train_arguments()
 
-    using_tfms = args.model_name.endswith("-tfms")
-
     model_name = args.model_name
-    model_name_base = model_name if not using_tfms else model_name.replace("-tfms", "")
+    model_name_base = model_name.split("-")[0]
 
     # select model from mapping based on argument
     try:
@@ -261,10 +265,10 @@ if __name__ == "__main__":
         raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
 
     try:
-        # set a default transform if none is provided
-        model_tfms = TFMS_MAP.get(model_name, TFMS_MAP["default"])
+        # full model name might be using special set of transforms (e.g. "resnet-tfms")
+        model_tfms = TFMS_MAP.get(model_name, TFMS_MAP[model_name_base])
         # for validation transforms, do not use image augmentations
-        val_tfms = TFMS_MAP.get(model_name_base, TFMS_MAP["default"])
+        val_tfms = TFMS_MAP[model_name_base]
     except KeyError as e:
         raise ValueError(f"Transformations for model '{model_name}' not found: {e}")
 
@@ -290,7 +294,12 @@ if __name__ == "__main__":
     assert labeled_train_loader is not None
     assert labeled_val_loader is not None
 
-    out_classes = labeled_dataset.n_classes
+    classifying_domains = model_name.split("-")[-1] == "domain"
+    if classifying_domains:
+        # count the number of domains in the labeled dataset
+        out_classes = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
+    else:
+        out_classes = labeled_dataset.n_classes
     assert out_classes is not None
 
     if not args.ensemble_type:

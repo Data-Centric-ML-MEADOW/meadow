@@ -57,10 +57,8 @@ def main():
         raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
     model_class = MODEL_MAP[model_name]
 
-    # Utilize non-augmented transforms if model name ends with -tfms
-    using_tfms = model_name.endswith("-tfms")
-    model_name_base = model_name if not using_tfms else model_name.replace("-tfms", "")
-    model_tfms = TFMS_MAP.get(model_name_base, TFMS_MAP["default"])
+    model_name_base = model_name.split("-")[0] # strip model subtype
+    model_tfms = TFMS_MAP[model_name_base]
 
     # init trainer class just to use predict method
     dummy_trainer = L.Trainer(devices=1, logger=[], deterministic=True)  # suppress logging
@@ -68,18 +66,27 @@ def main():
     # Load the labeled dataset and create evaluation DataLoaders
     labeled_dataset, _ = get_iwildcam_datasets()
 
+    classifying_domains = checkpoint_info["model_name"].split("-")[-1] == "domain"
+    if classifying_domains:
+        # count the number of domains in the labeled dataset
+        out_classes = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
+    else:
+        out_classes = labeled_dataset.n_classes
+    assert out_classes is not None
+
+
     # Initialize the model from the checkpoint
     if checkpoint_info["ensemble"]:
         if checkpoint_info["ensemble"] == "snapshot-pl":
             model = SnapshotEnsemble.load_from_checkpoint(
                 args.checkpoint_path,
-                out_classes=labeled_dataset.n_classes,
+                out_classes=out_classes,
                 train_loader_len=-1,
                 num_estimators=checkpoint_info["n_estimators"],
                 base_model=model_class,
                 base_model_args={
                     "variant": model_variant,
-                    "out_classes":labeled_dataset.n_classes
+                    "out_classes":out_classes
                 }
             )
         else:
@@ -88,9 +95,23 @@ def main():
         model = model_class.load_from_checkpoint(
             args.checkpoint_path,
             variant=model_variant,
-            out_classes=labeled_dataset.n_classes,
+            out_classes=out_classes,
         )
     model.eval()
+
+    # use .test() if we are evaluating domain classifier
+    if classifying_domains:
+        for split in EVAL_SPLIT_TYPES:
+            loader = create_loader(
+                labeled_dataset,
+                subset_type=split,
+                tfms=model_tfms,
+                batch_size=batch_size
+            )
+            assert loader is not None
+
+            dummy_trainer.test(model=model, dataloaders=loader)
+        return
 
     agg_res = {}
     for split in EVAL_SPLIT_TYPES:

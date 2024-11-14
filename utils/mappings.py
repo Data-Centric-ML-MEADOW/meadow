@@ -6,11 +6,13 @@ from torchvision import transforms
 from torchvision.transforms import v2
 
 from models.pretrained_resnet import PreTrainedResNet
+from models.pretrained_resnet_domain import PreTrainedResNetDomain
 from models.pretrained_vit import PreTrainedViT
 
 # a mapping from model identifier to the model class
 MODEL_MAP: dict[str, Any] = {
     "resnet": PreTrainedResNet,
+    "resnet-domain": PreTrainedResNetDomain,
     "vit": PreTrainedViT,
 }
 
