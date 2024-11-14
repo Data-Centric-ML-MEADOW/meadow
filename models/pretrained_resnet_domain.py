@@ -1,6 +1,6 @@
 import torch.nn.functional as F
 
-from models.pretrained_resnet import PreTrainedResNet
+from models.base_pretrained import PreTrainedResNet
 
 
 class PreTrainedResNetDomain(PreTrainedResNet):
@@ -24,3 +24,18 @@ class PreTrainedResNetDomain(PreTrainedResNet):
         self.log(f"{batch_kind}_acc", acc, prog_bar=True, on_epoch=True, sync_dist=True)
         self.log(f"{batch_kind}_f1", f1, prog_bar=True, on_epoch=True, sync_dist=True)
         return loss
+
+    def training_step(self, batch, batch_idx):
+        return self._batch_step(batch, "train")
+
+    def validation_step(self, batch, batch_idx):
+        return self._batch_step(batch, "val")
+
+    def test_step(self, batch, batch_idx):
+        return self._batch_step(batch, "test")
+
+    def predict_step(self, batch, batch_idx):
+        self.eval()
+        x, _, metadata = batch
+        return self(x)
+
