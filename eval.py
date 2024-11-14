@@ -1,6 +1,5 @@
 import argparse
 import os
-from tqdm import tqdm
 import torch
 import re
 import lightning as L
@@ -99,20 +98,6 @@ def main():
         )
     model.eval()
 
-    # use .test() if we are evaluating domain classifier
-    if classifying_domains:
-        for split in EVAL_SPLIT_TYPES:
-            loader = create_loader(
-                labeled_dataset,
-                subset_type=split,
-                tfms=model_tfms,
-                batch_size=batch_size
-            )
-            assert loader is not None
-
-            dummy_trainer.test(model=model, dataloaders=loader)
-        return
-
     agg_res = {}
     for split in EVAL_SPLIT_TYPES:
         loader = create_loader(
@@ -129,15 +114,14 @@ def main():
         # find predictions for each data example
         all_y_pred = torch.vstack(all_y_pred).argmax(dim=-1).flatten() # type: ignore
 
-        # stack all true labels and metadata for the loader
-        all_y_true = []
-        all_metadata = []
-        subset_no_tfms = labeled_dataset.get_subset(split)  # ok to skip transforms, X is not used
-        for _, y_true, m in tqdm(subset_no_tfms, desc="Collecting true labels and metadata"): # type: ignore
-            all_y_true.append(y_true)
-            all_metadata.append(m)
-        all_y_true = torch.hstack(all_y_true)
-        all_metadata = torch.vstack(all_metadata)
+        # ok to skip transforms, X is not used
+        subset_no_tfms = labeled_dataset.get_subset(split)
+        all_y_true = (
+            subset_no_tfms.y_array
+            if not classifying_domains
+            else subset_no_tfms.metadata_array[:, 0] # use domain labels
+        )
+        all_metadata = subset_no_tfms.metadata_array
 
         # Run evaluation with all accumulated predictions and metadata
         print(f"==={split}===")

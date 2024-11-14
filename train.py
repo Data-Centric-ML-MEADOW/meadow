@@ -260,7 +260,7 @@ if __name__ == "__main__":
 
     # select model from mapping based on argument
     try:
-        model_class = MODEL_MAP[model_name_base]
+        model_class = MODEL_MAP.get(model_name, MODEL_MAP[model_name_base])
     except KeyError:
         raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
 
