@@ -276,6 +276,15 @@ if __name__ == "__main__":
 
     # get datasets and dataloaders with transformations
     labeled_dataset, unlabeled_dataset = get_iwildcam_datasets()
+
+    classifying_domains = model_name.split("-")[-1] == "domain"
+    if classifying_domains:
+        # count the number of domains in the labeled dataset
+        out_classes = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
+    else:
+        out_classes = labeled_dataset.n_classes
+    assert out_classes is not None
+
     labeled_train_loader = create_loader(
         labeled_dataset,
         "train",
@@ -286,7 +295,7 @@ if __name__ == "__main__":
     )
     labeled_val_loader = create_loader(
         labeled_dataset,
-        "val",
+        "val" if not classifying_domains else "id_val",
         tfms=val_tfms,
         batch_size=args.batch_size,
         metadata=not using_torchensemble,
@@ -294,13 +303,6 @@ if __name__ == "__main__":
     assert labeled_train_loader is not None
     assert labeled_val_loader is not None
 
-    classifying_domains = model_name.split("-")[-1] == "domain"
-    if classifying_domains:
-        # count the number of domains in the labeled dataset
-        out_classes = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
-    else:
-        out_classes = labeled_dataset.n_classes
-    assert out_classes is not None
 
     if not args.ensemble_type:
         train_model(

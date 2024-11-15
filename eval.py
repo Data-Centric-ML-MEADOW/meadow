@@ -46,17 +46,15 @@ def main():
     # Parse checkpoint file name to get model details
     checkpoint_info = parse_checkpoint_filename(args.checkpoint_path)
     model_name = checkpoint_info["model_name"]
-    if model_name.endswith("-tfms"):
-        model_name = model_name.replace("-tfms", "")
+    model_name_base = model_name.split("-")[0] # strip model subtype
     model_variant = checkpoint_info["model_variant"]
     batch_size = checkpoint_info["batch_size"]
 
     # Select the model from MODEL_MAP based on the name and variant
     if model_name not in MODEL_MAP:
         raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
-    model_class = MODEL_MAP[model_name]
+    model_class = MODEL_MAP.get(model_name, MODEL_MAP[model_name_base])
 
-    model_name_base = model_name.split("-")[0] # strip model subtype
     model_tfms = TFMS_MAP[model_name_base]
 
     # init trainer class just to use predict method
@@ -89,7 +87,7 @@ def main():
                 }
             )
         else:
-            raise ValueError() # TODO: add support for torchenesemble
+            raise ValueError("Use the jupyter notebook to evaulate torchensemble models") # TODO: add support for torchenesemble
     else:
         model = model_class.load_from_checkpoint(
             args.checkpoint_path,
