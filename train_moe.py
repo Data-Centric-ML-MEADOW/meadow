@@ -123,6 +123,7 @@ def collect_train_arguments() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--early-stopping-patience", type=int)
     parser.add_argument("--learn-domain-mapper", action="store_true")
+    parser.add_argument("--snap-router-on-epoch", type=int)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--log-save-dir", type=str, default="logs")
     # descriptive string to append to log/checkpoint files (e.g. experiment setup, num gpus, etc.)
@@ -174,6 +175,7 @@ if __name__ == "__main__":
         out_classes=out_classes,
         lr=args.lr,
         learn_domain_mapper=args.learn_domain_mapper,
+        snap_router_on_epoch=args.snap_router_on_epoch,
     )
 
     run_desc = (

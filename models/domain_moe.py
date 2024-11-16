@@ -16,6 +16,7 @@ class DomainMoE(L.LightningModule):
         learn_domain_mapper: bool = False,
         optimizer=torch.optim.AdamW,  # type: ignore
         lr=1e-3,
+        snap_router_on_epoch: int | None = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -31,6 +32,7 @@ class DomainMoE(L.LightningModule):
 
         self.domain_mapper = domain_mapper
         self.learn_domain_mapper = learn_domain_mapper
+        self.snap_router_on_epoch = snap_router_on_epoch
 
         self.optimizer = optimizer
         self.lr = lr
@@ -61,26 +63,31 @@ class DomainMoE(L.LightningModule):
 
     def forward(self, x, d):
         # router should return a vector of weights for each expert
-        # expert_weights = F.softmax(self.router(d), dim=-1)
-        expert_weights = self.router(d)
-        return torch.stack(
-            [
-                F.softmax(m(x) * expert_weights[:, i][None].T, dim=-1)
-                for i, m in enumerate(self.expert_models)
-            ],
-            dim=0,
-        ).mean(dim=0)
+        expert_weights = F.softmax(self.router(d), dim=-1)
+        model_outputs = torch.stack([m(x) for m in self.expert_models])
+        # (E x B x C) * (E x B x 1) -- broadcasting across classes
+        return (model_outputs * expert_weights.T[:, :, None]).sum(dim=0)
+
+    def on_train_epoch_start(self) -> None:
+        super().on_train_epoch_start()
+        if (
+            self.snap_router_on_epoch
+            and self.current_epoch == self.snap_router_on_epoch
+        ):
+            # perform snapping on the router
+            self.router.weight = torch.argmax(self.router.weight, dim=0)
+            self.router.requires_grad_(False)
 
     def training_step(self, batch, batch_idx):
         self.train()
         x, y, _ = batch
-        with torch.no_grad():
-            d = self.domain_mapper(x)
+        d = self.domain_mapper(x)
         y_hat = self(x, d)
 
         # init optimizers for train step
         router_opt, expert_opt, domain_opt = self.optimizers()  # type: ignore
-        router_opt.zero_grad()  # type: ignore
+        if self.snap_router_on_epoch and self.current_epoch < self.snap_router_on_epoch:
+            router_opt.zero_grad()  # type: ignore
         expert_opt.zero_grad()  # type: ignore
         if self.learn_domain_mapper:
             domain_opt.zero_grad()  # type: ignore
@@ -90,10 +97,10 @@ class DomainMoE(L.LightningModule):
         self.manual_backward(loss)
 
         # step optimizers
-        router_opt.step()  # type: ignore
+        if self.snap_router_on_epoch and self.current_epoch < self.snap_router_on_epoch:
+            router_opt.step()  # type: ignore
         # only start optimizing the experts after a few epochs
-        if self.current_epoch > 5:
-            expert_opt.step()  # type: ignore
+        expert_opt.step()  # type: ignore
         if self.learn_domain_mapper:
             domain_opt.step()  # type: ignore
 
