@@ -11,8 +11,9 @@ class DomainMoE(L.LightningModule):
         self,
         num_domains,
         expert_models: torch.nn.ModuleList,
-        test_domain_mapper: torch.nn.Module,
+        domain_mapper: torch.nn.Module,
         out_classes,
+        learn_domain_mapper: bool = False,
         optimizer=torch.optim.AdamW,  # type: ignore
         lr=1e-3,
     ):
@@ -20,10 +21,16 @@ class DomainMoE(L.LightningModule):
         self.save_hyperparameters()
 
         self.num_domains = num_domains
-        self.num_experts = len(expert_models)
         self.out_classes = out_classes
+
         self.expert_models = expert_models
-        self.test_domain_mapper = test_domain_mapper
+        # ensure all experts have frozen backbones
+        for expert in self.expert_models:
+            expert.freeze_backbone = True  # type: ignore
+        self.num_experts = len(self.expert_models)
+
+        self.domain_mapper = domain_mapper
+        self.learn_domain_mapper = learn_domain_mapper
 
         self.optimizer = optimizer
         self.lr = lr
@@ -42,34 +49,53 @@ class DomainMoE(L.LightningModule):
         super().train(mode)
         for expert in self.expert_models:
             expert.train(mode)
-        # keep the domain mapper in eval mode
-        self.test_domain_mapper.eval()
+        # keep the domain mapper in eval mode if specified
+        if not self.learn_domain_mapper:
+            self.domain_mapper.eval()
 
     def eval(self):
         super().eval()
         for expert in self.expert_models:
             expert.eval()
+        self.domain_mapper.eval()
 
     def forward(self, x, d):
+        # router should return a vector of weights for each expert
+        # expert_weights = F.softmax(self.router(d), dim=-1)
         expert_weights = self.router(d)
-        torch.stack(
-            [m(x) * expert_weights[:, i] for i, m in enumerate(self.expert_models)],
+        return torch.stack(
+            [
+                F.softmax(m(x) * expert_weights[:, i][None].T, dim=-1)
+                for i, m in enumerate(self.expert_models)
+            ],
             dim=0,
         ).mean(dim=0)
 
     def training_step(self, batch, batch_idx):
         self.train()
-        x, y, metadata = batch
-        d = F.one_hot(metadata[:, 0], num_classes=self.num_domains)
+        x, y, _ = batch
+        with torch.no_grad():
+            d = self.domain_mapper(x)
         y_hat = self(x, d)
 
-        router_opt, expert_opt = self.optimizers()  # type: ignore
+        # init optimizers for train step
+        router_opt, expert_opt, domain_opt = self.optimizers()  # type: ignore
         router_opt.zero_grad()  # type: ignore
         expert_opt.zero_grad()  # type: ignore
+        if self.learn_domain_mapper:
+            domain_opt.zero_grad()  # type: ignore
+
+        # calculate loss and call backward
         loss = F.cross_entropy(y_hat, y)
         self.manual_backward(loss)
-        router_opt.zero_grad()  # type: ignore
-        expert_opt.zero_grad()  # type: ignore
+
+        # step optimizers
+        router_opt.step()  # type: ignore
+        # only start optimizing the experts after a few epochs
+        if self.current_epoch > 5:
+            expert_opt.step()  # type: ignore
+        if self.learn_domain_mapper:
+            domain_opt.step()  # type: ignore
 
         acc = self.accuracy(y_hat, y)
         f1 = self.f1_score(y_hat, y)
@@ -95,7 +121,7 @@ class DomainMoE(L.LightningModule):
             self.eval()
         x, y, _ = batch
         with torch.no_grad():
-            d = self.test_domain_mapper(x)
+            d = self.domain_mapper(x)
         y_hat = self(x, d)
         loss = F.cross_entropy(y_hat, y)
         acc = self.accuracy(y_hat, y)
@@ -117,12 +143,12 @@ class DomainMoE(L.LightningModule):
         self.eval()
         x, _, _ = batch
         with torch.no_grad():
-            d = self.test_domain_mapper(x)
+            d = self.domain_mapper(x)
         return self(x, d)
 
     def configure_optimizers(self):
-        # have router learn steeper than expert
+        # have router learn steeper than expert and domain mapper
         router_opt = self.optimizer(self.router.parameters(), lr=self.lr)
-        expert_opt = self.optimizer(self.expert_models.parameters(), lr=self.lr * 1e-2)
-        return router_opt, expert_opt
-        # return self.optimizer(self.parameters(), lr=self.lr)
+        expert_opt = self.optimizer(self.expert_models.parameters(), lr=self.lr)
+        domain_opt = self.optimizer(self.domain_mapper.parameters(), lr=self.lr)
+        return router_opt, expert_opt, domain_opt
