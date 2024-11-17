@@ -17,6 +17,7 @@ class DomainMoE(L.LightningModule):
         optimizer=torch.optim.AdamW,  # type: ignore
         lr=1e-3,
         snap_router_on_epoch: int | None = None,
+        learn_experts_after: int = -1,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -33,6 +34,7 @@ class DomainMoE(L.LightningModule):
         self.domain_mapper = domain_mapper
         self.learn_domain_mapper = learn_domain_mapper
         self.snap_router_on_epoch = snap_router_on_epoch
+        self.learn_experts_after = learn_experts_after
 
         self.optimizer = optimizer
         self.lr = lr
@@ -74,7 +76,7 @@ class DomainMoE(L.LightningModule):
             self.snap_router_on_epoch
             and self.current_epoch == self.snap_router_on_epoch
         ):
-            # perform snapping on the router
+            # perform snapping on the router on `snap_router_on_epoch`
             with torch.no_grad():
                 self.router.weight = torch.nn.Parameter(
                     F.one_hot(
@@ -86,9 +88,8 @@ class DomainMoE(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         self.train()
-        x, y, metadata = batch
-        # d = self.domain_mapper(x)
-        d = F.one_hot(metadata[:, 0], num_classes=self.num_domains).float()
+        x, y, _ = batch
+        d = self.domain_mapper(x)
         y_hat = self(x, d)
 
         # init optimizers for train step
@@ -98,7 +99,8 @@ class DomainMoE(L.LightningModule):
             or self.current_epoch < self.snap_router_on_epoch
         ):
             router_opt.zero_grad()  # type: ignore
-        expert_opt.zero_grad()  # type: ignore
+        if self.current_epoch > self.learn_experts_after:
+            expert_opt.zero_grad()  # type: ignore
         if self.learn_domain_mapper:
             domain_opt.zero_grad()  # type: ignore
 
@@ -113,7 +115,8 @@ class DomainMoE(L.LightningModule):
         ):
             router_opt.step()  # type: ignore
         # only start optimizing the experts after a few epochs
-        expert_opt.step()  # type: ignore
+        if self.current_epoch > self.learn_experts_after:
+            expert_opt.step()  # type: ignore
         if self.learn_domain_mapper:
             domain_opt.step()  # type: ignore
 
@@ -135,10 +138,7 @@ class DomainMoE(L.LightningModule):
         return loss
 
     def _eval_step(self, batch, batch_kind):
-        if batch_kind == "train":
-            self.train()
-        else:
-            self.eval()
+        self.eval()
         x, y, _ = batch
         with torch.no_grad():
             d = self.domain_mapper(x)
