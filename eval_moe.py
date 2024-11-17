@@ -8,7 +8,7 @@ import torch
 
 from models.domain_moe import DomainMoE
 from utils.data import create_loader, get_iwildcam_datasets
-from utils.mappings import MODEL_MAP, TFMS_MAP
+from utils.mappings import TFMS_MAP
 
 L.seed_everything(42, workers=True)  # for reproducability
 torch.set_float32_matmul_precision("high")
@@ -57,16 +57,7 @@ def main():
     checkpoint_info = parse_checkpoint_filename(args.checkpoint_path)
     model_name = checkpoint_info["model_name"]
     model_name_base = model_name.split("-")[0]  # strip model subtype
-    model_variant = checkpoint_info["model_variant"]
-    domain_mapper_name = checkpoint_info["domain_mapper_name"]
-    domain_mapper_variant = checkpoint_info["domain_mapper_variant"]
     batch_size = checkpoint_info["batch_size"]
-
-    # Select the model from MODEL_MAP based on the name and variant
-    if model_name not in MODEL_MAP:
-        raise ValueError(f"Model name must be one of {MODEL_MAP.keys()}")
-    model_class = MODEL_MAP.get(model_name, MODEL_MAP[model_name_base])
-    domain_mapper_class = MODEL_MAP[domain_mapper_name]
 
     model_tfms = TFMS_MAP[model_name_base]
 
@@ -81,16 +72,12 @@ def main():
     num_domains = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
     assert out_classes is not None
 
-    # base_model = model_class(variant=model_variant, out_classes=out_classes)
-    # domain_mapper = domain_mapper_class(variant=domain_mapper_variant, out_classes=num_domains)
     # init moe model
     model = DomainMoE.load_from_checkpoint(
         args.checkpoint_path,
         out_classes=out_classes,
         num_domains=num_domains,
         num_estimators=checkpoint_info["n_estimators"],
-        # expert_models=base_model,
-        # domain_mapper=domain_mapper,
     )
     model.eval()
 
