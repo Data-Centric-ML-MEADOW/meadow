@@ -46,6 +46,10 @@ class DomainMoE(L.LightningModule):
         # router to select expert model from set of domains
         self.router = torch.nn.Linear(self.num_domains, self.num_experts)
 
+        # init router so all experts are equally weighted initially
+        with torch.no_grad():
+            self.router.weight.fill_(1)
+
         # disable automatic optimization to allow for different lr
         self.automatic_optimization = False
 
@@ -78,6 +82,7 @@ class DomainMoE(L.LightningModule):
         ):
             # perform snapping on the router on `snap_router_on_epoch`
             with torch.no_grad():
+                self.unsnapped_router_weights = self.router.weight.clone().detach()
                 self.router.weight = torch.nn.Parameter(
                     F.one_hot(
                         torch.argmax(self.router.weight, dim=0),
