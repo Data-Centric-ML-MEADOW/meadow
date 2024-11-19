@@ -232,7 +232,7 @@ def train_torchensemble(
 def collect_train_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", required=True)
-    parser.add_argument("--model-variant", required=True)
+    parser.add_argument("--model-variant", type=int, required=True)
     # whether to freeze the feature extraction backbone of model
     parser.add_argument("--no-freeze-backbone", action="store_false")
     # applies per-estimator/expert if `ensemble-type` is specified

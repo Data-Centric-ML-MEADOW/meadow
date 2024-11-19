@@ -22,8 +22,14 @@ class PreTrainedViT(L.LightningModule):
         self.save_hyperparameters()
 
         # Validate variant
+        try:
+            variant = int(variant)
+        except ValueError:
+            raise ValueError(f"Invalid ViT variant: {variant}. It must be one of {list(self.vit_variant_map.keys())}")
+
         if variant not in self.vit_variant_map:
             raise ValueError(f"Invalid ViT variant! Choose from {list(self.vit_variant_map.keys())}")
+
         self.vit_variant = variant
         self.out_classes = out_classes
         self.optimizer = optimizer
