@@ -142,6 +142,35 @@ def main():
         os.mkdir("results")
     df.to_csv(f"results/{stripped_fn}.csv")  # save to file
 
+    all_y_preds = []
+    if checkpoint_info["ensemble"] == "snapshot-pl":
+        print("====EVAL-PER-EXPERT====")
+        for i, expert in enumerate(model.ensemble):
+            loader = create_loader(
+                labeled_dataset, subset_type='test', tfms=model_tfms, batch_size=batch_size
+            )
+            assert loader is not None
+
+            # infer on the loader
+            all_y_pred = dummy_trainer.predict(model=expert, dataloaders=loader) # type: ignore
+            assert all_y_pred is not None
+            # find predictions for each data example
+            all_y_pred = torch.vstack(all_y_pred).argmax(dim=-1).flatten()  # type: ignore
+            all_y_preds.append(all_y_pred)
+
+            # ok to skip transforms, X is not used
+            subset_no_tfms = labeled_dataset.get_subset('test')
+            all_y_true = subset_no_tfms.y_array
+            all_metadata = subset_no_tfms.metadata_array
+
+            print(f"===Expert #{i}===")
+            res, _ = labeled_dataset.eval(all_y_pred, all_y_true, all_metadata)
+            print(res)
+    all_y_preds = torch.stack(all_y_preds, dim=0)
+    corr_matrix = torch.corrcoef(all_y_preds)
+    print("====CORRELATION_MATRIX====")
+    print(corr_matrix)
+
 
 if __name__ == "__main__":
     main()
