@@ -15,14 +15,16 @@ def get_iwildcam_datasets() -> tuple[IWildCamDataset, IWildCamUnlabeledDataset]:
         IWildCamDataset | None,
         get_dataset(dataset="iwildcam", download=True),
     )
-    dataset_unlabeled = typing.cast(
-        IWildCamUnlabeledDataset | None,
-        get_dataset(dataset="iwildcam", download=True, unlabeled=True),
-    )
+    dataset_unlabeled = None
+    # dataset_unlabeled = typing.cast(
+    #     IWildCamUnlabeledDataset | None,
+    #     get_dataset(dataset="iwildcam", download=True, unlabeled=True),
+    # )
+
     # error out if dataset not found
-    if not dataset or not dataset_unlabeled:
+    if not dataset: # or not dataset_unlabeled:
         raise RuntimeError("Dataset not found, or failed to download.")
-    return dataset, dataset_unlabeled
+    return dataset, dataset_unlabeled # type: ignore
 
 
 class WILDSSubsetNoMetadata(WILDSSubset):
