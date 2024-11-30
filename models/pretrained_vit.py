@@ -53,12 +53,30 @@ class PreTrainedViT(L.LightningModule):
             self.vit.encoder.requires_grad_(False)
             self.vit.encoder.eval()
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_backbone:
+            self._freeze_backbone()
+
+    def _freeze_backbone(self):
+        """Freeze the backbone of the Vision Transformer."""
+        if not self.vit:
+            return
+        self.vit.conv_proj.requires_grad_(False)
+        self.vit.conv_proj.eval()
+        self.vit.encoder.requires_grad_(False)
+        self.vit.encoder.eval()
+
     def forward(self, x):
         """Forward pass through the Vision Transformer."""
         return self.vit(x)
 
     def _batch_step(self, batch, batch_kind):
         """Process a single batch."""
+        if batch_kind == "train":
+            self.train()
+        else:
+            self.eval()
         x, y, metadata = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
