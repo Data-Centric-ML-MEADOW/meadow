@@ -166,10 +166,10 @@ def main():
             print(f"===Expert #{i}===")
             res, _ = labeled_dataset.eval(all_y_pred, all_y_true, all_metadata)
             print(res)
-    all_y_preds = torch.stack(all_y_preds, dim=0)
-    corr_matrix = torch.corrcoef(all_y_preds)
-    print("====CORRELATION_MATRIX====")
-    print(corr_matrix)
+        all_y_preds = torch.stack(all_y_preds, dim=0)
+        corr_matrix = torch.corrcoef(all_y_preds)
+        print("====CORRELATION_MATRIX====")
+        print(corr_matrix)
 
 
 if __name__ == "__main__":
