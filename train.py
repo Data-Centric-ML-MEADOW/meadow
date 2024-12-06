@@ -13,7 +13,6 @@ from models.snapshot_ensemble import SnapshotEnsemble
 from utils.data import create_loader, get_iwildcam_datasets
 from utils.mappings import ENSEMBLE_MAP, MODEL_MAP, TFMS_MAP
 
-L.seed_everything(42, workers=True)  # for reproducability
 torch.set_float32_matmul_precision("high")
 
 MAX_EPOCHS = 50
@@ -249,11 +248,15 @@ def collect_train_arguments() -> argparse.Namespace:
     parser.add_argument("--num-estimators", type=int)
     # descriptive string to append to log/checkpoint files (e.g. experiment setup, num gpus, etc.)
     parser.add_argument("--misc-desc", type=str)
+    parser.add_argument("--bagging", action="store_true")
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = collect_train_arguments()
+
+    L.seed_everything(args.seed, workers=True)  # for reproducability
 
     model_name = args.model_name
     model_name_base = model_name.split("-")[0]
@@ -292,6 +295,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         # metadata is not needed for torchensemble ensembles
         metadata=not using_torchensemble,
+        bagging=args.bagging,
     )
     labeled_val_loader = create_loader(
         labeled_dataset,

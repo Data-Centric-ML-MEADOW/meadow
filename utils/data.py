@@ -1,5 +1,6 @@
 import typing
 
+from torch.utils.data import DataLoader, RandomSampler
 from torchvision import transforms
 from torchvision.transforms import v2
 from wilds import get_dataset
@@ -40,6 +41,7 @@ def create_loader(
     batch_size: int,
     num_workers=4,
     metadata=True,
+    bagging=False,
 ):
     """Creates a train dataloader."""
     if subset_type not in dataset.split_dict:
@@ -52,12 +54,27 @@ def create_loader(
         # substitute WILDSSubset.__getitem__ with one that doesn't return metadata
         data.__class__ = WILDSSubsetNoMetadata
 
-    loader = get_train_loader if subset_type == "train" else get_eval_loader
+    if bagging:
+        print("Bagging dataset...")
 
-    return loader(
-        loader="standard",
-        dataset=data,
+    return DataLoader(
+        data,
+        shuffle=(subset_type == "train" and not bagging),
+        sampler=RandomSampler(data, replacement=True) if bagging else None,
+        collate_fn=data.collate,
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=True,
     )
+
+    # loader = get_train_loader if subset_type == "train" else get_eval_loader
+
+
+
+    # return loader(
+    #     loader="standard",
+    #     dataset=data,
+    #     batch_size=batch_size,
+    #     num_workers=num_workers,
+    #     pin_memory=True,
+    # )

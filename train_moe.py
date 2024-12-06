@@ -1,5 +1,6 @@
 import argparse
 import re
+import os
 from datetime import datetime
 
 import lightning as L
@@ -96,6 +97,36 @@ def get_experts_from_ensemble(
     )
     return (ensemble_model.ensemble, checkpoint_info)
 
+def get_experts_from_folder(
+    expert_checkpoints_folder: str, out_classes: int
+) -> tuple[torch.nn.ModuleList, dict]:
+    checkpoints = os.listdir(expert_checkpoints_folder)
+    checkpoints_info = []
+    expert_models = torch.nn.ModuleList()
+
+    for checkpoint in checkpoints:
+        checkpoint_path = os.path.join(expert_checkpoints_folder, checkpoint)
+
+        checkpoint_info = parse_checkpoint_filename(checkpoint)
+        expert_model_name = checkpoint_info["model_name"]
+        expert_model_name_base = expert_model_name.split("-")[0]
+        expert_model_variant = checkpoint_info["model_variant"]
+
+        expert_model_class = MODEL_MAP.get(
+            expert_model_name, MODEL_MAP[expert_model_name_base]
+        )
+
+        expert_model = expert_model_class.load_from_checkpoint(
+            checkpoint_path=checkpoint_path,
+            variant=expert_model_variant,
+            out_classes=out_classes,
+        )
+
+        expert_models.append(expert_model)
+        checkpoints_info.append(checkpoint_info)
+        
+    return (expert_models, checkpoints_info[0])
+
 
 def get_domain_mapper_model(
     domain_mapper_checkpoint_path: str, out_classes: int
@@ -116,7 +147,8 @@ def get_domain_mapper_model(
 
 def collect_train_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--expert-ensemble-checkpoint-path", required=True)
+    parser.add_argument("--expert-ensemble-checkpoint-path")
+    parser.add_argument("--expert-checkpoints-folder")
     parser.add_argument("--domain-mapper-checkpoint-path", required=True)
     # hyperparams for the MoE
     parser.add_argument("--epochs", type=int, default=MAX_EPOCHS)
@@ -142,9 +174,16 @@ if __name__ == "__main__":
     num_labeled_domains = len(torch.unique(labeled_dataset.metadata_array[:, 0]))
 
     # get the experts, transforms, and domain mapper
-    experts, expert_checkpoint_info = get_experts_from_ensemble(
-        args.expert_ensemble_checkpoint_path, out_classes
-    )
+    if args.expert_ensemble_checkpoint_path is not None:
+        experts, expert_checkpoint_info = get_experts_from_ensemble(
+            args.expert_ensemble_checkpoint_path, out_classes
+        )
+    elif args.expert_checkpoints_folder is not None:
+        experts, expert_checkpoint_info = get_experts_from_folder(
+            args.expert_checkpoints_folder, out_classes
+        )
+    else:
+        assert False
 
     domain_mapper, domain_mapper_checkpoint_info = get_domain_mapper_model(
         args.domain_mapper_checkpoint_path, num_labeled_domains
